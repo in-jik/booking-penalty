@@ -44,6 +44,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', 'Segoe UI',
   border-radius: 20px; font-size: 12px; font-weight: 600; color: #4f6ef7; cursor: pointer; transition: all .15s;
 }
 .campaign-chip:hover { background: #dce9ff; }
+/* 랜딩 캠페인 목록은 항상 숨김 (관리자 전용) */
+#landing-campaign-list { display: none !important; }
 .landing-manage-btn { background: none; border: none; color: #bfbfbf; font-size: 12px; cursor: pointer; transition: color .15s; }
 .landing-manage-btn:hover { color: #595959; }
 
@@ -519,11 +521,7 @@ function renderCampaigns(){
 }
 
 function renderLandingChips(){
-  const list=document.getElementById('campaign-chip-list');
-  const wrap=document.getElementById('landing-campaign-list');
-  if(!campaigns.length){wrap.style.display='none';return;}
-  wrap.style.display='block';
-  list.innerHTML=campaigns.map(c=>'<span class="campaign-chip" onclick="enterCampaignDirect(\''+esc(c.code)+'\')">'+esc(c.name)+'</span>').join('');
+  // 보안: 랜딩 페이지에서는 캠페인 목록을 표시하지 않음 (관리자만 캠페인 관리 화면에서 확인 가능)
 }
 
 function openAddCampaignModal(){
