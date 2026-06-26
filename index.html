@@ -186,24 +186,28 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
 .preview-count{font-size:12px;color:#8c8c8c;margin-top:8px}
 .col-header-hint{font-size:11px;color:#8c8c8c;margin-bottom:12px;padding:8px 12px;background:#fffbe6;border-radius:8px;border:1px solid #ffe58f}
 
-.guide-panel{position:fixed;right:0;top:58px;z-index:50;width:230px;background:#fff;border-left:1px solid #e8e8e8;border-bottom-left-radius:14px;box-shadow:-3px 4px 16px rgba(0,0,0,0.09);transition:width .2s}
+.guide-panel{position:fixed;right:0;top:58px;z-index:50;width:250px;background:#fff;border-left:1px solid #e8e8e8;border-bottom-left-radius:14px;box-shadow:-3px 4px 16px rgba(0,0,0,0.09);transition:width .2s}
 .guide-panel.collapsed{width:36px}
 .guide-header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#1a1a2e;cursor:pointer;user-select:none}
 .guide-panel.collapsed .guide-header{border-bottom-left-radius:14px}
 .guide-header .gh-title{font-size:12px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;opacity:1;transition:opacity .15s}
 .guide-panel.collapsed .gh-title{opacity:0;width:0}
 .guide-toggle{background:none;border:none;cursor:pointer;color:#adc6ff;font-size:14px;padding:0;flex-shrink:0;line-height:1}
-.guide-body{overflow:hidden}
+.guide-body{overflow:hidden;overflow-y:auto;max-height:calc(100vh - 130px)}
 .guide-panel.collapsed .guide-body{display:none}
 .guide-table{width:100%;border-collapse:collapse;font-size:11.5px}
-.guide-table thead th{padding:7px 10px;background:#f5f7ff;color:#595959;font-weight:600;text-align:left;border-bottom:1px solid #e8e8e8;white-space:nowrap}
-.guide-table tbody td{padding:7px 10px;border-bottom:1px solid #f5f5f5;white-space:nowrap;color:#1a1a2e}
+.guide-table thead th{padding:7px 8px;background:#f5f7ff;color:#595959;font-weight:600;text-align:left;border-bottom:1px solid #e8e8e8;white-space:nowrap}
+.guide-table tbody td{padding:6px 8px;border-bottom:1px solid #f5f5f5;white-space:nowrap;color:#1a1a2e;vertical-align:middle}
 .guide-table tbody tr:last-child td{border-bottom:none}
 .guide-table tbody tr:hover td{background:#f9faff}
+.guide-table tbody td.guide-media-cell{background:#f5f7ff;font-weight:700;color:#1a1a2e;border-right:2px solid #e0e8ff;font-size:11px}
 .guide-rule{font-weight:700;color:#4f6ef7}
-.guide-del-btn{background:none;border:none;cursor:pointer;color:#d9d9d9;font-size:12px;padding:0 2px;line-height:1;transition:color .1s;visibility:hidden}
-.guide-table tbody tr:hover .guide-del-btn{visibility:visible}
-.guide-del-btn:hover{color:#ff4d4f}
+.guide-act-btns{display:flex;gap:2px;opacity:0;transition:opacity .1s}
+.guide-table tbody tr:hover .guide-act-btns{opacity:1}
+.guide-act-btn{background:none;border:none;cursor:pointer;font-size:11px;padding:2px 3px;border-radius:3px;line-height:1;transition:background .1s;color:#8c8c8c}
+.guide-act-btn:hover{background:#f0f0f0;color:#1a1a2e}
+.guide-act-btn.del:hover{background:#fff1f0;color:#ff4d4f}
+.guide-act-btn.edit:hover{background:#f0f5ff;color:#4f6ef7}
 .guide-add-row{padding:8px 10px;border-top:1px solid #f0f0f0}
 .guide-add-row button{width:100%;padding:6px;background:#f0f5ff;border:1px dashed #adc6ff;border-radius:6px;color:#4f6ef7;font-size:11px;font-weight:600;cursor:pointer;transition:background .15s}
 .guide-add-row button:hover{background:#dce9ff}
@@ -436,6 +440,22 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
   </div>
 </div>
 
+<!-- 가이드 수정 모달 -->
+<div class="modal-overlay" id="guide-edit-modal">
+  <div class="modal" style="max-width:360px">
+    <h2>✏ 가이드 항목 수정</h2>
+    <div class="form-grid">
+      <div class="field"><label>매체 *</label><input id="ge-media" type="text" placeholder="예) 네이버"></div>
+      <div class="field"><label>상품 *</label><input id="ge-product" type="text" placeholder="예) 스페셜DA"></div>
+      <div class="field form-full"><label>위약금 기준 *</label><input id="ge-rule" type="text" placeholder="예) 15영업일" onkeydown="if(event.key==='Enter')saveGuideEdit()"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModal('guide-edit-modal')">취소</button>
+      <button class="btn btn-primary" onclick="saveGuideEdit()">저장</button>
+    </div>
+  </div>
+</div>
+
 <!-- 가이드 패널 -->
 <div class="guide-panel" id="guide-panel" style="display:none">
   <div class="guide-header" onclick="toggleGuide()">
@@ -444,7 +464,7 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
   </div>
   <div class="guide-body">
     <table class="guide-table">
-      <thead><tr><th>매체</th><th>상품</th><th>기준</th><th></th></tr></thead>
+      <thead><tr><th>매체</th><th>상품</th><th>기준</th><th style="width:52px"></th></tr></thead>
       <tbody id="guide-tbody"></tbody>
     </table>
     <div class="guide-add-row"><button onclick="requireAuth(openGuideAddModal)">＋ 항목 추가</button></div>
@@ -792,16 +812,59 @@ function importBulk(){
 
 /* ═══ 가이드 ═══ */
 const DEFAULT_GUIDE=[{media:'네이버',product:'스페셜DA',rule:'15영업일'},{media:'네이버',product:'타임보드',rule:'15영업일'}];
-let guideItems=[];
+let guideItems=[], editingGuideIdx=null;
 function loadGuide(){try{guideItems=JSON.parse(localStorage.getItem(GUIDE_KEY))||DEFAULT_GUIDE;}catch{guideItems=[...DEFAULT_GUIDE];}}
 function saveGuide(){localStorage.setItem(GUIDE_KEY,JSON.stringify(guideItems));}
+
 function renderGuide(){
-  document.getElementById('guide-tbody').innerHTML=guideItems.map((g,i)=>'<tr>'
-    +'<td>'+esc(g.media)+'</td><td>'+esc(g.product)+'</td><td class="guide-rule">'+esc(g.rule)+'</td>'
-    +'<td><button class="guide-del-btn" onclick="requireAuth(()=>deleteGuideItem('+i+'))">✕</button></td>'
-    +'</tr>').join('');
+  const rows=[];
+  let i=0;
+  while(i<guideItems.length){
+    const g=guideItems[i];
+    // 같은 매체가 연속으로 몇 개인지 계산
+    let span=1;
+    while(i+span<guideItems.length && guideItems[i+span].media===g.media) span++;
+    // 첫 번째 항목에만 매체 셀(rowspan)
+    for(let j=0;j<span;j++){
+      const idx=i+j;
+      const gi=guideItems[idx];
+      const isFirst=j===0;
+      const isLast=idx===guideItems.length-1;
+      const actBtns='<div class="guide-act-btns">'
+        +(idx>0?'<button class="guide-act-btn" onclick="requireAuth(()=>moveGuideItem('+idx+',-1))" title="위로">▲</button>':'<button class="guide-act-btn" style="visibility:hidden">▲</button>')
+        +(!isLast?'<button class="guide-act-btn" onclick="requireAuth(()=>moveGuideItem('+idx+',1))" title="아래로">▼</button>':'<button class="guide-act-btn" style="visibility:hidden">▼</button>')
+        +'<button class="guide-act-btn edit" onclick="requireAuth(()=>openGuideEditModal('+idx+'))" title="수정">✏</button>'
+        +'<button class="guide-act-btn del" onclick="requireAuth(()=>deleteGuideItem('+idx+'))" title="삭제">✕</button>'
+        +'</div>';
+      if(isFirst){
+        rows.push('<tr>'
+          +'<td class="guide-media-cell" rowspan="'+span+'" style="border-bottom:'+(span>1?'1px solid #e0e8ff':'1px solid #f5f5f5')+'">'+esc(g.media)+'</td>'
+          +'<td>'+esc(gi.product)+'</td>'
+          +'<td class="guide-rule">'+esc(gi.rule)+'</td>'
+          +'<td>'+actBtns+'</td>'
+          +'</tr>');
+      }else{
+        rows.push('<tr>'
+          +'<td>'+esc(gi.product)+'</td>'
+          +'<td class="guide-rule">'+esc(gi.rule)+'</td>'
+          +'<td>'+actBtns+'</td>'
+          +'</tr>');
+      }
+    }
+    i+=span;
+  }
+  document.getElementById('guide-tbody').innerHTML=rows.join('');
 }
+
+function moveGuideItem(i,dir){
+  const j=i+dir;
+  if(j<0||j>=guideItems.length)return;
+  [guideItems[i],guideItems[j]]=[guideItems[j],guideItems[i]];
+  saveGuide();renderGuide();
+}
+
 function toggleGuide(){const p=document.getElementById('guide-panel');p.classList.toggle('collapsed');document.getElementById('guide-toggle-btn').textContent=p.classList.contains('collapsed')?'▶':'◀';}
+
 function openGuideAddModal(){['ga-media','ga-product','ga-rule'].forEach(id=>document.getElementById(id).value='');openModal('guide-add-modal');setTimeout(()=>document.getElementById('ga-media').focus(),100);}
 function saveGuideItem(){
   const media=document.getElementById('ga-media').value.trim();
@@ -809,6 +872,23 @@ function saveGuideItem(){
   const rule=document.getElementById('ga-rule').value.trim();
   if(!media||!product||!rule){showToast('모든 항목을 입력해 주세요.',true);return;}
   guideItems.push({media,product,rule});saveGuide();renderGuide();closeModal('guide-add-modal');showToast('가이드 추가');
+}
+
+function openGuideEditModal(i){
+  editingGuideIdx=i;
+  const g=guideItems[i];
+  document.getElementById('ge-media').value=g.media;
+  document.getElementById('ge-product').value=g.product;
+  document.getElementById('ge-rule').value=g.rule;
+  openModal('guide-edit-modal');setTimeout(()=>document.getElementById('ge-media').focus(),100);
+}
+function saveGuideEdit(){
+  const media=document.getElementById('ge-media').value.trim();
+  const product=document.getElementById('ge-product').value.trim();
+  const rule=document.getElementById('ge-rule').value.trim();
+  if(!media||!product||!rule){showToast('모든 항목을 입력해 주세요.',true);return;}
+  guideItems[editingGuideIdx]={media,product,rule};
+  saveGuide();renderGuide();closeModal('guide-edit-modal');showToast('가이드 수정 완료');editingGuideIdx=null;
 }
 function deleteGuideItem(i){guideItems.splice(i,1);saveGuide();renderGuide();showToast('가이드 항목 삭제');}
 
