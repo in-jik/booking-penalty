@@ -525,8 +525,20 @@ async function dbGet(path){
   if(isFirebaseReady()){
     try{
       const r=await fetch(FIREBASE_URL+'/'+path+'.json');
-      if(r.ok){const d=await r.json();if(d!==null)return d;}
+      if(r.ok){
+        const d=await r.json();
+        if(d!==null){localStorage.setItem(path,JSON.stringify(d));return d;}
+      }
     }catch(e){console.warn('Firebase read failed, using localStorage',e);}
+    // Firebase가 비어있음 → localStorage에 데이터가 있으면 Firebase로 자동 업로드
+    try{
+      const local=JSON.parse(localStorage.getItem(path));
+      if(local!==null){
+        fetch(FIREBASE_URL+'/'+path+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(local)}).catch(()=>{});
+        return local;
+      }
+    }catch{}
+    return null;
   }
   try{return JSON.parse(localStorage.getItem(path));}catch{return null;}
 }
@@ -978,8 +990,12 @@ async function init(){
   const M=['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
   document.getElementById('today-str').textContent=now.getFullYear()+'년 '+M[now.getMonth()]+' '+now.getDate()+'일 '+D[now.getDay()];
   showView('view-landing');
-  await loadCampaigns();
-  await loadGuide();
+  await loadCampaigns();  // Firebase 비어있으면 localStorage → Firebase 자동 업로드
+  await loadGuide();      // 가이드도 동일
+  // 각 캠페인의 부킹 데이터도 Firebase에 없으면 자동 업로드
+  if(isFirebaseReady()&&campaigns.length>0){
+    campaigns.forEach(c=>{dbGet('bookings_'+c.code).catch(()=>{});});
+  }
 }
 init();
 </script>
