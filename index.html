@@ -510,16 +510,50 @@ function xlsxToStr(v){
   const d=parseDate(String(v));return d?toYMD(d):String(v).trim();
 }
 
-/* ═══ 스토리지 ═══ */
-const CAMPAIGNS_KEY = 'penalty_campaigns_v1';
-const GUIDE_KEY = 'penalty_guide_v1';
+/* ═══════════════════════════════════════
+   ⚙ Firebase 설정
+   Firebase 프로젝트 생성 후 아래 URL을 입력하세요.
+   예: https://my-project-default-rtdb.firebaseio.com
+═══════════════════════════════════════ */
+const FIREBASE_URL = 'YOUR_FIREBASE_URL_HERE';
+
+/* ═══ 스토리지 (Firebase + localStorage 이중 저장) ═══ */
 const ADMIN_CODE = 'inkim';
-const bookingKey = code => 'penalty_bookings_'+code.toLowerCase();
+const isFirebaseReady = () => FIREBASE_URL && !FIREBASE_URL.includes('YOUR_');
+
+async function dbGet(path){
+  if(isFirebaseReady()){
+    try{
+      const r=await fetch(FIREBASE_URL+'/'+path+'.json');
+      if(r.ok){const d=await r.json();if(d!==null)return d;}
+    }catch(e){console.warn('Firebase read failed, using localStorage',e);}
+  }
+  try{return JSON.parse(localStorage.getItem(path));}catch{return null;}
+}
+async function dbSet(path,val){
+  localStorage.setItem(path,JSON.stringify(val));
+  if(isFirebaseReady()){
+    try{
+      await fetch(FIREBASE_URL+'/'+path+'.json',{
+        method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(val)
+      });
+    }catch(e){console.warn('Firebase write failed',e);}
+  }
+}
+async function dbDel(path){
+  localStorage.removeItem(path);
+  if(isFirebaseReady()){
+    try{await fetch(FIREBASE_URL+'/'+path+'.json',{method:'DELETE'});}
+    catch(e){console.warn('Firebase delete failed',e);}
+  }
+}
 
 /* ═══ 캠페인 ═══ */
 let campaigns = [];
-function loadCampaigns(){try{campaigns=JSON.parse(localStorage.getItem(CAMPAIGNS_KEY))||[];}catch{campaigns=[];}}
-function saveCampaigns(){localStorage.setItem(CAMPAIGNS_KEY,JSON.stringify(campaigns));}
+async function loadCampaigns(){
+  try{campaigns=(await dbGet('campaigns'))||[];}catch{campaigns=[];}
+}
+async function saveCampaigns(){await dbSet('campaigns',campaigns);}
 
 function renderCampaigns(){
   const tbody=document.getElementById('campaign-tbody');
@@ -528,7 +562,7 @@ function renderCampaigns(){
   if(!campaigns.length){tbody.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
   tbody.innerHTML=campaigns.map(c=>{
-    const cnt=(JSON.parse(localStorage.getItem(bookingKey(c.code)))||[]).length;
+    let cnt=0;try{const bk=JSON.parse(localStorage.getItem('bookings_'+c.code));cnt=bk?bk.length:0;}catch{}
     return '<tr><td><strong>'+esc(c.name)+'</strong></td><td><span class="code-badge">'+esc(c.code)+'</span></td>'
       +'<td style="color:#8c8c8c;font-size:12px">'+(c.createdAt?c.createdAt.slice(0,10):'-')+'</td>'
       +'<td style="color:#8c8c8c">'+cnt+'건</td>'
@@ -537,7 +571,6 @@ function renderCampaigns(){
       +'<button class="btn btn-danger btn-sm" onclick="deleteCampaign(\''+esc(c.code)+'\')">삭제</button>'
       +'</div></td></tr>';
   }).join('');
-  renderLandingChips();
 }
 
 function renderLandingChips(){
@@ -548,20 +581,20 @@ function openAddCampaignModal(){
   document.getElementById('ac-name').value='';document.getElementById('ac-code').value='';
   openModal('add-campaign-modal');setTimeout(()=>document.getElementById('ac-name').focus(),100);
 }
-function saveCampaign(){
+async function saveCampaign(){
   const name=document.getElementById('ac-name').value.trim();
   const code=document.getElementById('ac-code').value.trim().toLowerCase();
   if(!name||!code){showToast('캠페인명과 코드를 모두 입력해 주세요.',true);return;}
   if(campaigns.find(c=>c.code===code)){showToast('이미 존재하는 코드입니다.',true);return;}
   campaigns.push({name,code,createdAt:new Date().toISOString()});
-  saveCampaigns();renderCampaigns();closeModal('add-campaign-modal');showToast('"'+name+'" 캠페인 추가 완료');
+  await saveCampaigns();renderCampaigns();closeModal('add-campaign-modal');showToast('"'+name+'" 캠페인 추가 완료');
 }
-function deleteCampaign(code){
+async function deleteCampaign(code){
   const c=campaigns.find(x=>x.code===code);
   if(!confirm('"'+c?.name+'" 캠페인과 모든 부킹 데이터를 삭제하시겠습니까?'))return;
   campaigns=campaigns.filter(x=>x.code!==code);
-  localStorage.removeItem(bookingKey(code));
-  saveCampaigns();renderCampaigns();showToast('캠페인 삭제 완료');
+  await dbDel('bookings_'+code);
+  await saveCampaigns();renderCampaigns();showToast('캠페인 삭제 완료');
 }
 
 /* ═══ 뷰 전환 ═══ */
@@ -574,31 +607,43 @@ function showView(id){
 }
 function showLanding(){
   currentCampaignCode=null;showView('view-landing');
-  document.getElementById('landing-code').value='';renderLandingChips();
+  document.getElementById('landing-code').value='';
 }
-function showManageView(){loadCampaigns();renderCampaigns();showView('view-manage');}
-function enterCampaign(){
+async function showManageView(){await loadCampaigns();renderCampaigns();showView('view-manage');}
+async function enterCampaign(){
   const code=document.getElementById('landing-code').value.trim().toLowerCase();
   if(!code){document.getElementById('landing-error').textContent='코드를 입력해 주세요.';return;}
-  loadCampaigns();
+  setLandingLoading(true);
+  await loadCampaigns();
+  setLandingLoading(false);
   const c=campaigns.find(x=>x.code===code);
   if(!c){document.getElementById('landing-error').textContent='존재하지 않는 캠페인 코드입니다.';return;}
   enterCampaignDirect(code);
 }
-function enterCampaignDirect(code){
-  loadCampaigns();
+async function enterCampaignDirect(code){
+  await loadCampaigns();
   const c=campaigns.find(x=>x.code===code.toLowerCase());
   if(!c){showToast('캠페인을 찾을 수 없습니다.',true);return;}
   currentCampaignCode=c.code;
   document.getElementById('campaign-title').textContent='📋 '+c.name+' - 위약금 데드라인';
   document.title=c.name+' - 위약금 데드라인';
-  loadData();render();loadGuide();renderGuide();showView('view-campaign');
+  await loadData();render();await loadGuide();renderGuide();showView('view-campaign');
+}
+function setLandingLoading(on){
+  const btn=document.querySelector('.landing-enter-btn');
+  if(btn)btn.textContent=on?'확인 중…':'입장 →';
 }
 
 /* ═══ 부킹 데이터 ═══ */
 let data=[], sortKey='penalty_dday', sortAsc=true, editingId=null, pendingCallback=null;
-function loadData(){if(!currentCampaignCode){data=[];return;}try{data=JSON.parse(localStorage.getItem(bookingKey(currentCampaignCode)))||[];}catch{data=[];}}
-function saveData(){if(!currentCampaignCode)return;localStorage.setItem(bookingKey(currentCampaignCode),JSON.stringify(data));}
+async function loadData(){
+  if(!currentCampaignCode){data=[];return;}
+  try{data=(await dbGet('bookings_'+currentCampaignCode))||[];}catch{data=[];}
+}
+async function saveData(){
+  if(!currentCampaignCode)return;
+  await dbSet('bookings_'+currentCampaignCode,data);
+}
 
 /* ═══ 계산 ═══ */
 function recalc(){
@@ -720,7 +765,7 @@ function openForm(id){
   }
   recalc();openModal('form-modal');setTimeout(()=>document.getElementById('f-media').focus(),100);
 }
-function saveBooking(){
+async function saveBooking(){
   const media=document.getElementById('f-media').value.trim();
   const product=document.getElementById('f-product').value.trim();
   const slot=document.getElementById('f-slot').value.trim();
@@ -732,16 +777,16 @@ function saveBooking(){
     createdAt:editingId?(data.find(x=>x.id===editingId)||{}).createdAt:undefined};
   if(editingId){data=data.map(x=>x.id===editingId?makeBooking(f,editingId):x);showToast('수정되었습니다.');}
   else{data.push(makeBooking(f));showToast('추가되었습니다.');}
-  saveData();closeModal('form-modal');render();
+  closeModal('form-modal');render();await saveData();
 }
-function duplicateBooking(id){
+async function duplicateBooking(id){
   const b=data.find(x=>x.id===id);if(!b)return;
   data.push({...b,id:Date.now().toString(),createdAt:new Date().toISOString()});
-  saveData();render();showToast('"'+b.slot+'" 복사 완료');
+  render();showToast('"'+b.slot+'" 복사 완료');await saveData();
 }
-function deleteBooking(id){
+async function deleteBooking(id){
   if(!confirm('삭제하시겠습니까?'))return;
-  data=data.filter(x=>x.id!==id);saveData();render();showToast('삭제되었습니다.');
+  data=data.filter(x=>x.id!==id);render();showToast('삭제되었습니다.');await saveData();
 }
 
 /* ═══ 백업/복원 ═══ */
@@ -755,7 +800,7 @@ function importData(e){
   const r=new FileReader();
   r.onload=ev=>{
     try{const imp=JSON.parse(ev.target.result);if(!Array.isArray(imp))throw 0;
-      requireAuth(()=>{data=imp;saveData();render();showToast(imp.length+'건 복원 완료');});
+      requireAuth(async()=>{data=imp;render();showToast(imp.length+'건 복원 완료');await saveData();});
     }catch{showToast('파일 형식이 올바르지 않습니다.',true);}
   };
   r.readAsText(file);e.target.value='';
@@ -803,18 +848,20 @@ function refreshBulkPreview(){
   document.getElementById('bulk-preview-area').style.display='block';
   document.getElementById('bulk-import-btn').style.display=valid>0?'inline-flex':'none';
 }
-function importBulk(){
+async function importBulk(){
   const pD=parseInt(document.getElementById('bulk-days').value)||10;
   const pT=document.getElementById('bulk-type').value;
   bulkRows.filter(r=>r.media&&r.product&&r.slot).forEach(r=>data.push(makeBooking({...r,penalty_days:pD,penalty_type:pT})));
-  saveData();render();closeModal('bulk-modal');bulkRows=[];showToast('업로드 완료');
+  render();closeModal('bulk-modal');bulkRows=[];showToast('업로드 완료');await saveData();
 }
 
 /* ═══ 가이드 ═══ */
 const DEFAULT_GUIDE=[{media:'네이버',product:'스페셜DA',rule:'15영업일'},{media:'네이버',product:'타임보드',rule:'15영업일'}];
 let guideItems=[], editingGuideIdx=null;
-function loadGuide(){try{guideItems=JSON.parse(localStorage.getItem(GUIDE_KEY))||DEFAULT_GUIDE;}catch{guideItems=[...DEFAULT_GUIDE];}}
-function saveGuide(){localStorage.setItem(GUIDE_KEY,JSON.stringify(guideItems));}
+async function loadGuide(){
+  try{guideItems=(await dbGet('guide'))||DEFAULT_GUIDE;}catch{guideItems=[...DEFAULT_GUIDE];}
+}
+async function saveGuide(){await dbSet('guide',guideItems);}
 
 function renderGuide(){
   const rows=[];
@@ -856,22 +903,22 @@ function renderGuide(){
   document.getElementById('guide-tbody').innerHTML=rows.join('');
 }
 
-function moveGuideItem(i,dir){
+async function moveGuideItem(i,dir){
   const j=i+dir;
   if(j<0||j>=guideItems.length)return;
   [guideItems[i],guideItems[j]]=[guideItems[j],guideItems[i]];
-  saveGuide();renderGuide();
+  renderGuide();await saveGuide();
 }
 
 function toggleGuide(){const p=document.getElementById('guide-panel');p.classList.toggle('collapsed');document.getElementById('guide-toggle-btn').textContent=p.classList.contains('collapsed')?'▶':'◀';}
 
 function openGuideAddModal(){['ga-media','ga-product','ga-rule'].forEach(id=>document.getElementById(id).value='');openModal('guide-add-modal');setTimeout(()=>document.getElementById('ga-media').focus(),100);}
-function saveGuideItem(){
+async function saveGuideItem(){
   const media=document.getElementById('ga-media').value.trim();
   const product=document.getElementById('ga-product').value.trim();
   const rule=document.getElementById('ga-rule').value.trim();
   if(!media||!product||!rule){showToast('모든 항목을 입력해 주세요.',true);return;}
-  guideItems.push({media,product,rule});saveGuide();renderGuide();closeModal('guide-add-modal');showToast('가이드 추가');
+  guideItems.push({media,product,rule});renderGuide();closeModal('guide-add-modal');showToast('가이드 추가');await saveGuide();
 }
 
 function openGuideEditModal(i){
@@ -882,15 +929,15 @@ function openGuideEditModal(i){
   document.getElementById('ge-rule').value=g.rule;
   openModal('guide-edit-modal');setTimeout(()=>document.getElementById('ge-media').focus(),100);
 }
-function saveGuideEdit(){
+async function saveGuideEdit(){
   const media=document.getElementById('ge-media').value.trim();
   const product=document.getElementById('ge-product').value.trim();
   const rule=document.getElementById('ge-rule').value.trim();
   if(!media||!product||!rule){showToast('모든 항목을 입력해 주세요.',true);return;}
   guideItems[editingGuideIdx]={media,product,rule};
-  saveGuide();renderGuide();closeModal('guide-edit-modal');showToast('가이드 수정 완료');editingGuideIdx=null;
+  renderGuide();closeModal('guide-edit-modal');showToast('가이드 수정 완료');editingGuideIdx=null;await saveGuide();
 }
-function deleteGuideItem(i){guideItems.splice(i,1);saveGuide();renderGuide();showToast('가이드 항목 삭제');}
+async function deleteGuideItem(i){guideItems.splice(i,1);renderGuide();showToast('가이드 항목 삭제');await saveGuide();}
 
 /* ═══ 모달 ═══ */
 function openModal(id){document.getElementById(id).classList.add('show');}
@@ -906,13 +953,33 @@ function showToast(msg,isError=false){
   el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),2500);
 }
 
+/* ═══ 구 버전 localStorage 마이그레이션 ═══ */
+function migrateOldData(){
+  // 이전 키 → 새 키로 복사 (데이터 손실 방지)
+  if(!localStorage.getItem('campaigns')&&localStorage.getItem('penalty_campaigns_v1'))
+    localStorage.setItem('campaigns',localStorage.getItem('penalty_campaigns_v1'));
+  if(!localStorage.getItem('guide')&&localStorage.getItem('penalty_guide_v1'))
+    localStorage.setItem('guide',localStorage.getItem('penalty_guide_v1'));
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);
+    if(k&&k.startsWith('penalty_bookings_')){
+      const code=k.replace('penalty_bookings_','');
+      if(!localStorage.getItem('bookings_'+code))
+        localStorage.setItem('bookings_'+code,localStorage.getItem(k));
+    }
+  }
+}
+
 /* ═══ 초기화 ═══ */
-function init(){
+async function init(){
+  migrateOldData();
   const now=new Date();
   const D=['일요일','월요일','화요일','수요일','목요일','금요일','토요일'];
   const M=['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
   document.getElementById('today-str').textContent=now.getFullYear()+'년 '+M[now.getMonth()]+' '+now.getDate()+'일 '+D[now.getDay()];
-  loadCampaigns();renderLandingChips();showView('view-landing');loadGuide();
+  showView('view-landing');
+  await loadCampaigns();
+  await loadGuide();
 }
 init();
 </script>
