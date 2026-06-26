@@ -388,7 +388,10 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
 <div class="modal-overlay" id="bulk-modal">
   <div class="modal" style="width:780px">
     <h2>📊 엑셀 벌크 업로드</h2>
-    <div class="col-header-hint">📌 컬럼 순서: <strong>A. 매체 | B. 상품 | C. 구좌(형태) | D. 일자 | E. 시간 | F. 타겟팅</strong> (1행 헤더 자동 제외)</div>
+    <div class="col-header-hint">
+      📌 컬럼 순서: <strong>A. 매체 | B. 상품 | C. 구좌(형태) | D. 일자 | E. 시간 | F. 타겟팅 | G. 위약금일수 | H. 기준</strong> (1행 헤더 자동 제외)<br>
+      <span style="color:#d46b08">G·H 컬럼은 선택사항입니다.</span> 비워두면 아래 기본값 적용. H컬럼: <strong>영업일</strong> 또는 <strong>달력일</strong> 입력
+    </div>
     <div class="drop-zone" id="drop-zone"
       ondragover="event.preventDefault();this.classList.add('drag-over')"
       ondragleave="this.classList.remove('drag-over')"
@@ -400,7 +403,7 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
     </div>
     <input type="file" id="bulk-file-input" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleBulkFile(event)">
     <div class="bulk-rule-row">
-      <label>일괄 위약금 기준:</label>
+      <label>기본값 (G·H 컬럼 없을 때):</label>
       <span class="rule-suffix">라이브로부터</span>
       <input type="number" id="bulk-days" value="10" min="1" max="365">
       <select id="bulk-type">
@@ -412,7 +415,7 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
     </div>
     <div id="bulk-preview-area" style="display:none">
       <div class="preview-wrap"><table>
-        <thead><tr><th>#</th><th>매체</th><th>상품</th><th>구좌</th><th>일자</th><th>시간</th><th>타겟팅</th><th>D-day</th><th>D-1</th><th>비고</th></tr></thead>
+        <thead><tr><th>#</th><th>매체</th><th>상품</th><th>구좌</th><th>일자</th><th>시간</th><th>타겟팅</th><th>위약금 기준</th><th>D-day</th><th>D-1</th><th>비고</th></tr></thead>
         <tbody id="bulk-tbody"></tbody>
       </table></div>
       <div class="preview-count" id="bulk-count"></div>
@@ -831,10 +834,18 @@ function processFile(file){
       const wb=XLSX.read(e.target.result,{type:'binary',cellDates:false});
       const ws=wb.Sheets[wb.SheetNames[0]];
       const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-      bulkRows=raw.slice(1).filter(r=>r.some(c=>c!=='')).map(r=>({
-        media:String(r[0]||'').trim(),product:String(r[1]||'').trim(),slot:String(r[2]||'').trim(),
-        date:xlsxToStr(r[3]),time:String(r[4]||'').trim(),targeting:String(r[5]||'').trim(),
-      }));
+      bulkRows=raw.slice(1).filter(r=>r.some(c=>c!=='')).map(r=>{
+        // G컬럼: 위약금 일수, H컬럼: 기준 (영업일/달력일)
+        const rawDays=String(r[6]||'').trim();
+        const rawType=String(r[7]||'').trim();
+        const rowDays=rawDays&&!isNaN(parseInt(rawDays))?parseInt(rawDays):null;
+        const rowType=rawType?( rawType.includes('달력')||rawType.includes('calendar')?'calendar':'business' ):null;
+        return {
+          media:String(r[0]||'').trim(),product:String(r[1]||'').trim(),slot:String(r[2]||'').trim(),
+          date:xlsxToStr(r[3]),time:String(r[4]||'').trim(),targeting:String(r[5]||'').trim(),
+          rowDays, rowType  // null이면 기본값 사용
+        };
+      });
       refreshBulkPreview();
     }catch(err){showToast('파일 파싱 오류: '+err.message,true);}
   };
@@ -842,15 +853,20 @@ function processFile(file){
 }
 function refreshBulkPreview(){
   if(!bulkRows.length)return;
-  const pD=parseInt(document.getElementById('bulk-days').value)||10;
-  const pT=document.getElementById('bulk-type').value;
+  const defD=parseInt(document.getElementById('bulk-days').value)||10;
+  const defT=document.getElementById('bulk-type').value;
   document.getElementById('bulk-tbody').innerHTML=bulkRows.map((r,i)=>{
     const warn=!r.media?'매체 없음':!r.product?'상품 없음':!r.slot?'구좌 없음':'';
+    const pD=r.rowDays!==null?r.rowDays:defD;
+    const pT=r.rowType!==null?r.rowType:defT;
     const dd=r.date?(pT==='business'?subBizDays(r.date,pD):subCalDays(r.date,pD)):null;
     const d1=dd?calcD1(dd,pT):null;
+    const ruleLabel=pD+(pT==='business'?'영업일':'달력일');
+    const isCustom=r.rowDays!==null||r.rowType!==null;
     return '<tr><td style="color:#8c8c8c">'+(i+1)+'</td><td>'+esc(r.media)+'</td><td>'+esc(r.product)+'</td><td>'+esc(r.slot)+'</td>'
       +'<td>'+(r.date?formatDate(r.date):'-')+'</td><td>'+esc(r.time||'-')+'</td>'
-      +'<td style="max-width:100px;overflow:hidden;text-overflow:ellipsis">'+esc(r.targeting||'-')+'</td>'
+      +'<td style="max-width:80px;overflow:hidden;text-overflow:ellipsis">'+esc(r.targeting||'-')+'</td>'
+      +'<td><span style="font-size:11px;font-weight:600;color:'+(isCustom?'#4f6ef7':'#8c8c8c')+'">'+ruleLabel+(isCustom?' ✓':'')+'</span></td>'
       +'<td class="calc-cell">'+(dd?formatDate(toYMD(dd)):'-')+'</td><td class="calc-cell">'+(d1?formatDate(toYMD(d1)):'-')+'</td>'
       +'<td>'+(warn?'<span class="warn-cell">⚠ '+warn+'</span>':'')+'</td></tr>';
   }).join('');
@@ -861,9 +877,13 @@ function refreshBulkPreview(){
   document.getElementById('bulk-import-btn').style.display=valid>0?'inline-flex':'none';
 }
 async function importBulk(){
-  const pD=parseInt(document.getElementById('bulk-days').value)||10;
-  const pT=document.getElementById('bulk-type').value;
-  bulkRows.filter(r=>r.media&&r.product&&r.slot).forEach(r=>data.push(makeBooking({...r,penalty_days:pD,penalty_type:pT})));
+  const defD=parseInt(document.getElementById('bulk-days').value)||10;
+  const defT=document.getElementById('bulk-type').value;
+  bulkRows.filter(r=>r.media&&r.product&&r.slot).forEach(r=>{
+    const pD=r.rowDays!==null?r.rowDays:defD;
+    const pT=r.rowType!==null?r.rowType:defT;
+    data.push(makeBooking({...r,penalty_days:pD,penalty_type:pT}));
+  });
   render();closeModal('bulk-modal');bulkRows=[];showToast('업로드 완료');await saveData();
 }
 
