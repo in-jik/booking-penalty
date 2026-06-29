@@ -499,6 +499,7 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
       <div class="field form-full"><label>위약금 기준 *</label><input id="ge-rule" type="text" placeholder="예) 15영업일" onkeydown="if(event.key==='Enter')saveGuideEdit()"></div>
     </div>
     <div class="modal-actions">
+      <button class="btn btn-danger" style="margin-right:auto" onclick="requireAuth(()=>{deleteGuideItem(editingGuideIdx);closeModal('guide-edit-modal');})">삭제</button>
       <button class="btn btn-cancel" onclick="closeModal('guide-edit-modal')">취소</button>
       <button class="btn btn-primary" onclick="saveGuideEdit()">저장</button>
     </div>
