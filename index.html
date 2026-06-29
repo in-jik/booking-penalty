@@ -455,6 +455,36 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
       &nbsp;&nbsp;&nbsp;&nbsp;<strong>D-1 구좌</strong>: 내일이 D-day인 광고 집행일 — 오늘 취소하면 아직 위약금 미발생
     </div>
     <div id="penalty-calc-body"></div>
+
+    <!-- 직접 계산해보기 -->
+    <div style="margin-top:20px;border-top:2px dashed #e8e8e8;padding-top:16px">
+      <div style="font-size:13px;font-weight:600;color:#434343;margin-bottom:10px">✏️ 직접 계산해보기</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:13px;color:#595959">집행일로부터</span>
+        <input type="number" id="custom-days" value="14" min="1" max="365"
+          style="width:72px;padding:5px 8px;border:1px solid #d9d9d9;border-radius:6px;font-size:13px;text-align:center"
+          oninput="calcCustom()">
+        <select id="custom-type" onchange="calcCustom()"
+          style="padding:5px 8px;border:1px solid #d9d9d9;border-radius:6px;font-size:13px">
+          <option value="business">영업일 (공휴일 제외)</option>
+          <option value="calendar">달력일 (전체 날짜)</option>
+        </select>
+        <span style="font-size:13px;color:#595959">전부터 위약금</span>
+      </div>
+      <div id="custom-calc-result" style="margin-top:12px;display:none;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:12px 16px">
+        <div style="display:flex;gap:24px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:11px;color:#888;margin-bottom:4px">🔴 D-day 구좌 (오늘 기준)</div>
+            <div id="custom-dday" style="font-size:16px;font-weight:700;color:#cf1322"></div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#888;margin-bottom:4px">🟡 D-1 구좌 (내일 기준)</div>
+            <div id="custom-dm1" style="font-size:16px;font-weight:700;color:#ad6800"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="modal-actions" style="margin-top:16px">
       <button class="btn btn-cancel" onclick="closeModal('penalty-calc-modal')">닫기</button>
     </div>
@@ -1305,6 +1335,27 @@ function openPenaltyCalc(){
     +'<th>🟡 D-1 구좌<div style="font-size:10px;font-weight:400;color:#faad14">내일이 마지막 취소 가능일</div></th>'
     +'</tr></thead><tbody>'+rows+'</tbody></table></div>';
   openModal('penalty-calc-modal');
+  setTimeout(calcCustom,50);
+}
+
+function calcCustom(){
+  const n=parseInt(document.getElementById('custom-days').value)||0;
+  const type=document.getElementById('custom-type').value;
+  if(n<1){document.getElementById('custom-calc-result').style.display='none';return;}
+  const wd=['일','월','화','수','목','금','토'];
+  const fmt=d=>d.getFullYear()+'.'+(d.getMonth()+1)+'.'+(d.getDate())+'('+wd[d.getDay()]+')';
+  let dday,dm1;
+  if(type==='business'){
+    dday=addBizDays(n);
+    dm1=addBizDays(n+1);
+  }else{
+    const base=new Date();base.setHours(0,0,0,0);
+    dday=new Date(base.getTime()+n*86400000);
+    dm1=new Date(base.getTime()+(n+1)*86400000);
+  }
+  document.getElementById('custom-dday').textContent=fmt(dday);
+  document.getElementById('custom-dm1').textContent=fmt(dm1);
+  document.getElementById('custom-calc-result').style.display='block';
 }
 
 /* ═══ 엑셀 업로드 ═══ */
