@@ -978,8 +978,10 @@ async function deleteBooking(id){
 
 /* ═══ 진행 상태 변경 ═══ */
 function handleStatusChange(id,sel){
-  const val=sel.value;
-  requireAuth(()=>changeItemStatus(id,val,sel));
+  const newVal=sel.value;
+  const orig=(data.find(x=>x.id===id)||{}).item_status||'pending';
+  sel.value=orig; // 인증 전 즉시 원래 값으로 복원 (취소 시 변경 없음)
+  requireAuth(()=>changeItemStatus(id,newVal));
 }
 async function changeItemStatus(id,val,sel){
   const b=data.find(x=>x.id===id);if(!b)return;
@@ -1295,28 +1297,28 @@ async function loadGuide(){
 async function saveGuide(){await dbSet('guide',guideItems);}
 
 function renderGuide(){
+  // 매체별 그룹핑: 매체 최초 등장 순서 유지하면서 같은 매체끼리 모음
+  const mediaOrder=[];
+  const mediaGroups={};
+  guideItems.forEach((g,origIdx)=>{
+    if(!mediaGroups[g.media]){mediaGroups[g.media]=[];mediaOrder.push(g.media);}
+    mediaGroups[g.media].push({...g,origIdx});
+  });
   const rows=[];
-  let i=0;
-  while(i<guideItems.length){
-    const g=guideItems[i];
-    // 같은 매체가 연속으로 몇 개인지 계산
-    let span=1;
-    while(i+span<guideItems.length && guideItems[i+span].media===g.media) span++;
-    // 첫 번째 항목에만 매체 셀(rowspan)
-    for(let j=0;j<span;j++){
-      const idx=i+j;
-      const gi=guideItems[idx];
+  mediaOrder.forEach(media=>{
+    const group=mediaGroups[media];
+    const span=group.length;
+    group.forEach((gi,j)=>{
+      const idx=gi.origIdx;
       const isFirst=j===0;
       const isLast=idx===guideItems.length-1;
       const actBtns='<div class="guide-act-btns">'
-        +(idx>0?'<button class="guide-act-btn" onclick="requireAuth(()=>moveGuideItem('+idx+',-1))" title="위로">▲</button>':'<button class="guide-act-btn" style="visibility:hidden">▲</button>')
-        +(!isLast?'<button class="guide-act-btn" onclick="requireAuth(()=>moveGuideItem('+idx+',1))" title="아래로">▼</button>':'<button class="guide-act-btn" style="visibility:hidden">▼</button>')
         +'<button class="guide-act-btn edit" onclick="requireAuth(()=>openGuideEditModal('+idx+'))" title="수정">✏</button>'
         +'<button class="guide-act-btn del" onclick="requireAuth(()=>deleteGuideItem('+idx+'))" title="삭제">✕</button>'
         +'</div>';
       if(isFirst){
         rows.push('<tr>'
-          +'<td class="guide-media-cell" rowspan="'+span+'" style="border-bottom:'+(span>1?'1px solid #e0e8ff':'1px solid #f5f5f5')+'">'+esc(g.media)+'</td>'
+          +'<td class="guide-media-cell" rowspan="'+span+'" style="border-bottom:'+(span>1?'1px solid #e0e8ff':'1px solid #f5f5f5')+'">'+esc(gi.media)+'</td>'
           +'<td>'+esc(gi.product)+'</td>'
           +'<td class="guide-rule">'+esc(gi.rule)+'</td>'
           +'<td>'+actBtns+'</td>'
@@ -1328,9 +1330,8 @@ function renderGuide(){
           +'<td>'+actBtns+'</td>'
           +'</tr>');
       }
-    }
-    i+=span;
-  }
+    });
+  });
   document.getElementById('guide-tbody').innerHTML=rows.join('');
 }
 
@@ -1349,6 +1350,13 @@ async function saveGuideItem(){
   const product=document.getElementById('ga-product').value.trim();
   const rule=document.getElementById('ga-rule').value.trim();
   if(!media||!product||!rule){showToast('모든 항목을 입력해 주세요.',true);return;}
+  // 동일 매체+상품 기존 항목 있으면 기준만 업데이트 (중복 제거)
+  const dupIdx=guideItems.findIndex(g=>g.media===media&&g.product===product);
+  if(dupIdx!==-1){
+    guideItems[dupIdx].rule=rule;
+    renderGuide();closeModal('guide-add-modal');showToast('기존 항목 기준 업데이트 완료');await saveGuide();
+    return;
+  }
   guideItems.push({media,product,rule});renderGuide();closeModal('guide-add-modal');showToast('가이드 추가');await saveGuide();
 }
 
