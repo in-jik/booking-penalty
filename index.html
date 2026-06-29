@@ -216,9 +216,16 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
 .toast.show{transform:translateY(0);opacity:1}
 /* 취소/확장 상태 */
 .ibadge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}
-.ibadge-active{background:#f6ffed;color:#389e0d;border:1px solid #b7eb8f}
+.ibadge-pending{background:#fafafa;color:#595959;border:1px solid #d9d9d9}
+.ibadge-confirmed{background:#f6ffed;color:#389e0d;border:1px solid #b7eb8f}
 .ibadge-cancelled{background:#fff1f0;color:#cf1322;border:1px solid #ffa39e}
-.ibadge-extended{background:#e6f4ff;color:#0958d9;border:1px solid #91caff}
+.status-select{padding:3px 8px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid;cursor:pointer;outline:none;-webkit-appearance:auto}
+.status-select.status-pending{background:#fafafa;color:#595959;border-color:#d9d9d9}
+.status-select.status-confirmed{background:#f6ffed;color:#389e0d;border-color:#b7eb8f}
+.status-select.status-cancelled{background:#fff1f0;color:#cf1322;border-color:#ffa39e}
+.bulk-bar{display:none;align-items:center;gap:8px;padding:8px 12px;background:#e6f7ff;border:1px solid #91d5ff;border-radius:8px;margin-bottom:8px;flex-wrap:wrap}
+.bulk-bar.show{display:flex}
+.bulk-bar select{padding:5px 8px;border-radius:7px;font-size:13px;border:1px solid #91d5ff;outline:none}
 .row-cancelled td:not(:last-child){opacity:0.5}
 /* 이번주 D-1 */
 .row-this-week-d1{background:#f9f0ff!important}
@@ -231,6 +238,7 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
 .recipient-tag button:hover{color:#cf1322}
 .email-preview-box{background:#f8faff;border:1px solid #c5d5ff;border-radius:10px;padding:14px;font-size:12px;font-family:monospace;white-space:pre-wrap;max-height:320px;overflow-y:auto;color:#1a1a2e;line-height:1.6;margin-top:12px}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 </head>
 <body>
 
@@ -316,9 +324,20 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
       </select>
       <span style="margin-left:auto;font-size:12px;color:#8c8c8c" id="result-count"></span>
     </div>
+    <div class="bulk-bar" id="bulk-bar">
+      <span id="bulk-count-label" style="font-size:13px;font-weight:600;color:#0958d9">0개 선택됨</span>
+      <select id="bulk-status-select">
+        <option value="pending">⚪ 미정</option>
+        <option value="confirmed">🟢 확정</option>
+        <option value="cancelled">🔴 취소</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="requireAuth(bulkUpdateStatus)">선택 항목 변경</button>
+      <button class="btn btn-ghost btn-sm" onclick="clearSelection()">선택 해제</button>
+    </div>
     <div class="table-wrap">
       <table>
         <thead><tr>
+          <th style="width:36px;text-align:center"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this.checked)" title="전체 선택" style="cursor:pointer;width:15px;height:15px"></th>
           <th onclick="sortBy('media')">매체 ↕</th><th onclick="sortBy('product')">상품 ↕</th>
           <th onclick="sortBy('slot')">구좌 ↕</th><th>진행</th><th onclick="sortBy('date')">일자 ↕</th>
           <th>시간</th><th>타겟팅</th>
@@ -378,9 +397,9 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
       <div class="field">
         <label>진행 상태</label>
         <select id="f-item-status">
-          <option value="active">🟢 정상 진행</option>
+          <option value="pending">⚪ 미정</option>
+          <option value="confirmed">🟢 확정</option>
           <option value="cancelled">🔴 취소</option>
-          <option value="extended">🔵 확장</option>
         </select>
       </div>
       <div class="field"><label>일자 (라이브 날짜) *</label><input id="f-date" type="date" oninput="recalc()"></div>
@@ -488,9 +507,9 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
 
 <!-- 캠페인 알림 설정 모달 -->
 <div class="modal-overlay" id="campaign-settings-modal">
-  <div class="modal" style="max-width:480px">
+  <div class="modal" style="max-width:520px">
     <h2>📧 이메일 알림 설정</h2>
-    <p style="font-size:13px;color:#8c8c8c;margin-bottom:16px">매주 월요일 이번주 D-1 도래 구좌 목록을 이메일로 발송합니다.</p>
+    <div style="font-size:12px;color:#8c8c8c;margin-bottom:16px">이번주 D-1 도래 구좌 목록을 이메일로 자동 발송합니다.</div>
     <div class="field">
       <label>수신자 이메일</label>
       <div id="recipient-tags" style="min-height:36px;padding:4px 0;margin-bottom:8px"></div>
@@ -502,12 +521,48 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
         <button class="btn btn-primary" onclick="addRecipient()">추가</button>
       </div>
     </div>
-    <div style="margin-top:14px;padding:12px 14px;background:#fffbe6;border:1px solid #ffe58f;border-radius:10px;font-size:12px;color:#595959;line-height:1.7">
-      💡 <strong>'이번주 발송'</strong> 버튼으로 즉시 발송 (이메일 앱 연동)<br>
-      📅 <strong>자동 발송</strong>: 설정 저장 후 아래 Cowork 스케줄 확인
+    <hr style="border:none;border-top:1px solid #f0f0f0;margin:14px 0">
+    <div style="font-weight:700;font-size:13px;margin-bottom:10px">⚡ EmailJS 자동 발송 설정</div>
+    <div style="padding:10px 12px;background:#f0f7ff;border:1px solid #bae0ff;border-radius:8px;font-size:11px;color:#0958d9;margin-bottom:12px;line-height:1.6">
+      무료 이메일 자동 발송 서비스 <a href="https://www.emailjs.com" target="_blank" style="color:#0958d9;font-weight:700">emailjs.com</a>에서 계정 생성 후<br>
+      Email Service, Template (변수: <code>{{to_email}}</code> <code>{{subject}}</code> <code>{{message}}</code>) 연동 필요
     </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="field" style="margin:0">
+        <label>Public Key</label>
+        <input type="text" id="ejs-public-key" placeholder="예) AbCd1234XyZ" style="padding:8px 10px;border:1px solid #d9d9d9;border-radius:7px;font-size:12px;width:100%;box-sizing:border-box;outline:none">
+      </div>
+      <div class="field" style="margin:0">
+        <label>Service ID</label>
+        <input type="text" id="ejs-service-id" placeholder="예) service_abc123" style="padding:8px 10px;border:1px solid #d9d9d9;border-radius:7px;font-size:12px;width:100%;box-sizing:border-box;outline:none">
+      </div>
+      <div class="field" style="margin:0;grid-column:1/-1">
+        <label>Template ID</label>
+        <input type="text" id="ejs-template-id" placeholder="예) template_xyz789" style="padding:8px 10px;border:1px solid #d9d9d9;border-radius:7px;font-size:12px;width:100%;box-sizing:border-box;outline:none">
+      </div>
+    </div>
+    <hr style="border:none;border-top:1px solid #f0f0f0;margin:14px 0">
+    <div style="font-weight:700;font-size:13px;margin-bottom:10px">📅 자동 발송 스케줄</div>
+    <div style="display:flex;gap:12px;align-items:center">
+      <div class="field" style="margin:0;flex:1">
+        <label>발송 요일</label>
+        <select id="sched-weekday" style="padding:8px 10px;border:1px solid #d9d9d9;border-radius:7px;font-size:13px;width:100%;outline:none">
+          <option value="1">월요일</option>
+          <option value="2">화요일</option>
+          <option value="3">수요일</option>
+          <option value="4">목요일</option>
+          <option value="5">금요일</option>
+        </select>
+      </div>
+      <div class="field" style="margin:0;flex:1">
+        <label>발송 시간</label>
+        <input type="time" id="sched-time" value="09:00" style="padding:8px 10px;border:1px solid #d9d9d9;border-radius:7px;font-size:13px;width:100%;box-sizing:border-box;outline:none">
+      </div>
+    </div>
+    <div style="margin-top:8px;font-size:11px;color:#8c8c8c">※ 지정 요일이 공휴일이면 직전 영업일에 자동 발송됩니다</div>
     <div class="modal-actions">
       <button class="btn btn-cancel" onclick="closeModal('campaign-settings-modal')">취소</button>
+      <button class="btn btn-ghost" onclick="testEmailjsSend()">📤 테스트 발송</button>
       <button class="btn btn-primary" onclick="saveCampaignSettings()">저장</button>
     </div>
   </div>
@@ -713,6 +768,7 @@ async function enterCampaignDirect(code){
   document.getElementById('campaign-title').textContent='📋 '+c.name+' - 위약금 데드라인';
   document.title=c.name+' - 위약금 데드라인';
   await loadData();render();await loadGuide();renderGuide();await loadCampaignSettings();showView('view-campaign');
+  setTimeout(checkAutoSendParam,500);
 }
 function setLandingLoading(on){
   const btn=document.querySelector('.landing-enter-btn');
@@ -721,9 +777,18 @@ function setLandingLoading(on){
 
 /* ═══ 부킹 데이터 ═══ */
 let data=[], sortKey='penalty_dday', sortAsc=true, editingId=null, pendingCallback=null;
+
+/* 기존 데이터 마이그레이션: active→pending, extended→confirmed */
+function migrateItemStatus(arr){
+  arr.forEach(b=>{
+    if(b.item_status==='active')b.item_status='pending';
+    else if(b.item_status==='extended')b.item_status='confirmed';
+  });
+}
 async function loadData(){
   if(!currentCampaignCode){data=[];return;}
   try{data=(await dbGet('bookings_'+currentCampaignCode))||[];}catch{data=[];}
+  migrateItemStatus(data);
 }
 async function saveData(){
   if(!currentCampaignCode)return;
@@ -781,11 +846,12 @@ function isThisWeekD1(b){
   const{mon,sun}=getThisWeekRange();
   return d1>=mon&&d1<=sun;
 }
-function itemStatusBadge(b){
-  const s=b.item_status||'active';
-  const map={active:['ibadge-active','🟢 정상'],cancelled:['ibadge-cancelled','🔴 취소'],extended:['ibadge-extended','🔵 확장']};
-  const[cls,label]=map[s]||map.active;
-  return '<span class="ibadge '+cls+'" onclick="requireAuth(()=>toggleItemStatus(\''+b.id+'\'))" title="클릭하여 변경">'+label+'</span>';
+function itemStatusSelect(b){
+  const cur=b.item_status||'pending';
+  const opts=[['pending','⚪ 미정'],['confirmed','🟢 확정'],['cancelled','🔴 취소']];
+  return '<select class="status-select status-'+cur+'" onchange="handleStatusChange(''+b.id+'',this)">'
+    +opts.map(([v,l])=>'<option value="'+v+'"'+(v===cur?' selected':'')+'>'+l+'</option>').join('')
+    +'</select>';
 }
 
 /* ═══ 렌더 ═══ */
@@ -810,10 +876,10 @@ function render(){
       let cls=rowCls(s);
       if(thisWeek&&!['dday','d1','expired'].includes(s))cls='row-this-week-d1';
       if(isCancelled)cls=(cls?cls+' ':'')+'row-cancelled';
-      return '<tr class="'+cls+'">'
+      return '<tr class="'+cls+'">'+'<td style="text-align:center"><input type="checkbox" class="row-select" data-id="'+b.id+'" onchange="updateBulkBar()" style="cursor:pointer;width:14px;height:14px"></td>'
         +'<td><strong>'+esc(b.media)+'</strong></td><td>'+esc(b.product)+'</td>'
         +'<td>'+(isCancelled?'<s style="opacity:.6">'+esc(b.slot)+'</s>':esc(b.slot))+'</td>'
-        +'<td>'+itemStatusBadge(b)+'</td>'
+        +'<td>'+itemStatusSelect(b)+'</td>'
         +'<td><div class="date-cell"><span class="date-main">'+formatDate(b.date)+'</span></div></td>'
         +'<td>'+esc(b.time||'-')+'</td>'
         +'<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">'+esc(b.targeting||'-')+'</td>'
@@ -833,9 +899,9 @@ function render(){
   }
   document.getElementById('cnt-dday').textContent=data.filter(b=>getStatus(b)==='dday').length;
   document.getElementById('cnt-d1').textContent=data.filter(b=>getStatus(b)==='d1').length;
-  document.getElementById('cnt-week-d1').textContent=data.filter(b=>isThisWeekD1(b)&&(b.item_status||'active')!=='cancelled').length;
+  document.getElementById('cnt-week-d1').textContent=data.filter(b=>isThisWeekD1(b)&&(b.item_status||'pending')!=='cancelled').length;
   document.getElementById('cnt-week').textContent=data.filter(b=>getStatus(b)==='week').length;
-  document.getElementById('cnt-total').textContent=data.filter(b=>getStatus(b)!=='expired'&&(b.item_status||'active')!=='cancelled').length;
+  document.getElementById('cnt-total').textContent=data.filter(b=>getStatus(b)!=='expired'&&(b.item_status||'pending')!=='cancelled').length;
   document.getElementById('result-count').textContent=rows.length+'건 표시 중';
   const medias=[...new Set(data.map(b=>b.media).filter(Boolean))].sort();
   const sel=document.getElementById('filter-media'),cur=sel.value;
@@ -864,7 +930,7 @@ function makeBooking(f,id){
   const dd=f.date?(pT==='business'?subBizDays(f.date,pD):subCalDays(f.date,pD)):null;
   const d1=dd?calcD1(dd,pT):null;
   return{id:id||Date.now().toString(),media:f.media,product:f.product,slot:f.slot,date:f.date,time:f.time,targeting:f.targeting,
-    item_status:f.item_status||'active',
+    item_status:f.item_status||'pending',
     penalty_days:pD,penalty_type:pT,penalty_dday:dd?toYMD(dd):'',penalty_d1:d1?toYMD(d1):'',createdAt:f.createdAt||new Date().toISOString()};
 }
 function openForm(id){
@@ -877,11 +943,11 @@ function openForm(id){
     document.getElementById('f-time').value=b.time||'';document.getElementById('f-targeting').value=b.targeting||'';
     document.getElementById('f-penalty-days').value=b.penalty_days||10;
     document.getElementById('f-penalty-type').value=b.penalty_type||'business';
-    document.getElementById('f-item-status').value=b.item_status||'active';
+    document.getElementById('f-item-status').value=b.item_status||'pending';
   }else{
     ['f-media','f-product','f-slot','f-date','f-time','f-targeting'].forEach(k=>document.getElementById(k).value='');
     document.getElementById('f-penalty-days').value=10;document.getElementById('f-penalty-type').value='business';
-    document.getElementById('f-item-status').value='active';
+    document.getElementById('f-item-status').value='pending';
   }
   recalc();openModal('form-modal');setTimeout(()=>document.getElementById('f-media').focus(),100);
 }
@@ -892,7 +958,7 @@ async function saveBooking(){
   if(!media||!product||!slot){showToast('매체, 상품, 구좌는 필수입니다.',true);return;}
   const f={media,product,slot,date:document.getElementById('f-date').value,time:document.getElementById('f-time').value.trim(),
     targeting:document.getElementById('f-targeting').value.trim(),
-    item_status:document.getElementById('f-item-status').value||'active',
+    item_status:document.getElementById('f-item-status').value||'pending',
     penalty_days:parseInt(document.getElementById('f-penalty-days').value)||10,
     penalty_type:document.getElementById('f-penalty-type').value,
     createdAt:editingId?(data.find(x=>x.id===editingId)||{}).createdAt:undefined};
@@ -910,34 +976,75 @@ async function deleteBooking(id){
   data=data.filter(x=>x.id!==id);render();showToast('삭제되었습니다.');await saveData();
 }
 
-/* ═══ 진행 상태 토글 ═══ */
-async function toggleItemStatus(id){
+/* ═══ 진행 상태 변경 ═══ */
+function handleStatusChange(id,sel){
+  const val=sel.value;
+  requireAuth(()=>changeItemStatus(id,val,sel));
+}
+async function changeItemStatus(id,val,sel){
   const b=data.find(x=>x.id===id);if(!b)return;
-  const order=['active','cancelled','extended'];
-  const cur=b.item_status||'active';
-  b.item_status=order[(order.indexOf(cur)+1)%order.length];
+  b.item_status=val;
   render();await saveData();
-  showToast({active:'🟢 정상으로 변경',cancelled:'🔴 취소로 변경',extended:'🔵 확장으로 변경'}[b.item_status]);
+  showToast({pending:'⚪ 미정으로 변경',confirmed:'🟢 확정으로 변경',cancelled:'🔴 취소로 변경'}[val]);
+}
+/* ═══ 일괄 선택 + 일괄 변경 ═══ */
+function toggleSelectAll(checked){
+  document.querySelectorAll('.row-select').forEach(cb=>cb.checked=checked);
+  updateBulkBar();
+}
+function updateBulkBar(){
+  const checked=document.querySelectorAll('.row-select:checked');
+  const bar=document.getElementById('bulk-bar');
+  const lbl=document.getElementById('bulk-count-label');
+  if(checked.length>0){bar.classList.add('show');lbl.textContent=checked.length+'개 선택됨';}
+  else{bar.classList.remove('show');}
+  const allCbs=document.querySelectorAll('.row-select');
+  document.getElementById('select-all').checked=allCbs.length>0&&checked.length===allCbs.length;
+}
+async function bulkUpdateStatus(){
+  const sel=document.getElementById('bulk-status-select').value;
+  const ids=[...document.querySelectorAll('.row-select:checked')].map(c=>c.dataset.id);
+  if(!ids.length){showToast('선택된 항목이 없습니다.',true);return;}
+  ids.forEach(id=>{const b=data.find(x=>x.id===id);if(b)b.item_status=sel;});
+  render();await saveData();
+  showToast(ids.length+'개 항목 → '+{pending:'미정',confirmed:'확정',cancelled:'취소'}[sel]+' 변경 완료');
+}
+function clearSelection(){
+  document.querySelectorAll('.row-select').forEach(cb=>cb.checked=false);
+  document.getElementById('select-all').checked=false;
+  document.getElementById('bulk-bar').classList.remove('show');
 }
 
 /* ═══ 캠페인 알림 설정 (이메일 수신자) ═══ */
 let campaignRecipients=[];
+let campaignSchedule={weekday:1,time:'09:00',ejsPublicKey:'',ejsServiceId:'',ejsTemplateId:''};
 async function loadCampaignSettings(){
   if(!currentCampaignCode)return;
   try{
     const cfg=await dbGet('campaign_settings_'+currentCampaignCode);
     campaignRecipients=(cfg&&cfg.recipients)||[];
-  }catch{campaignRecipients=[];}
+    if(cfg&&cfg.schedule)campaignSchedule=Object.assign({},campaignSchedule,cfg.schedule);
+  }catch{campaignRecipients=[];campaignSchedule={weekday:1,time:'09:00',ejsPublicKey:'',ejsServiceId:'',ejsTemplateId:''};}
 }
 async function saveCampaignSettings(){
   if(!currentCampaignCode)return;
-  await dbSet('campaign_settings_'+currentCampaignCode,{recipients:campaignRecipients});
+  campaignSchedule.weekday=parseInt(document.getElementById('sched-weekday').value)||1;
+  campaignSchedule.time=document.getElementById('sched-time').value||'09:00';
+  campaignSchedule.ejsPublicKey=document.getElementById('ejs-public-key').value.trim();
+  campaignSchedule.ejsServiceId=document.getElementById('ejs-service-id').value.trim();
+  campaignSchedule.ejsTemplateId=document.getElementById('ejs-template-id').value.trim();
+  await dbSet('campaign_settings_'+currentCampaignCode,{recipients:campaignRecipients,schedule:campaignSchedule});
   closeModal('campaign-settings-modal');showToast('알림 설정 저장 완료');
 }
 async function openCampaignSettings(){
   await loadCampaignSettings();
   renderRecipientTags();
   document.getElementById('new-recipient-input').value='';
+  document.getElementById('sched-weekday').value=campaignSchedule.weekday||1;
+  document.getElementById('sched-time').value=campaignSchedule.time||'09:00';
+  document.getElementById('ejs-public-key').value=campaignSchedule.ejsPublicKey||'';
+  document.getElementById('ejs-service-id').value=campaignSchedule.ejsServiceId||'';
+  document.getElementById('ejs-template-id').value=campaignSchedule.ejsTemplateId||'';
   openModal('campaign-settings-modal');
   setTimeout(()=>document.getElementById('new-recipient-input').focus(),100);
 }
@@ -968,7 +1075,7 @@ async function previewWeeklyEmail(){
   const{mon,sun}=getThisWeekRange();
   const fmt=d=>d?(d.getMonth()+1)+'/'+d.getDate():'';
   const weekLabel=fmt(mon)+'~'+fmt(sun);
-  const weekBookings=data.filter(b=>isThisWeekD1(b)&&(b.item_status||'active')!=='cancelled');
+  const weekBookings=data.filter(b=>isThisWeekD1(b)&&(b.item_status||'pending')!=='cancelled');
   const W=['일','월','화','수','목','금','토'];
   const fmtFull=d=>{ if(!d)return'-'; return d.getFullYear()+'.'+(d.getMonth()+1)+'.'+d.getDate()+'('+W[d.getDay()]+')'; };
   const camName=document.getElementById('campaign-title').textContent.replace('📋 ','').replace(' - 위약금 데드라인','');
@@ -1019,6 +1126,94 @@ function sendWeeklyEmail(){
   showToast('메일 앱으로 전환합니다...');
 }
 
+
+/* ═══ 공휴일-aware 자동 발송 ═══ */
+function getScheduledSendDate(){
+  // 이번 주에서 설정 요일 찾기 (한국 공휴일이면 직전 영업일)
+  const now=new Date();
+  const todayDay=now.getDay();// 0=일,1=월..6=토
+  const target=parseInt(campaignSchedule.weekday)||1;// 1=월..5=금
+  const mon=new Date(now);mon.setDate(now.getDate()-(todayDay===0?6:todayDay-1));
+  mon.setHours(0,0,0,0);
+  let sendDate=new Date(mon);sendDate.setDate(mon.getDate()+(target-1));
+  // 공휴일이면 직전 영업일
+  while(sendDate>mon&&!isBizDay(sendDate)){sendDate=new Date(sendDate-86400000);}
+  return sendDate;
+}
+function shouldSendToday(){
+  const sendDate=getScheduledSendDate();
+  const today=new Date();today.setHours(0,0,0,0);
+  return sendDate.getTime()===today.getTime();
+}
+async function buildEmailContent(){
+  const{mon,sun}=getThisWeekRange();
+  const fmt=d=>d?(d.getMonth()+1)+'/'+d.getDate():'';
+  const weekLabel=fmt(mon)+'~'+fmt(sun);
+  const weekBookings=data.filter(b=>isThisWeekD1(b)&&(b.item_status||'pending')!=='cancelled');
+  const W=['일','월','화','수','목','금','토'];
+  const fmtFull=d=>{if(!d)return'-';return d.getFullYear()+'.'+(d.getMonth()+1)+'.'+d.getDate()+'('+W[d.getDay()]+')';}; 
+  const camName=document.getElementById('campaign-title').textContent.replace('📋 ','').replace(' - 위약금 데드라인','');
+  let body=`[광고 부킹 위약금 알림]
+캠페인: ${camName}
+기간: 이번주 D-1 도래 구좌 (${weekLabel})
+
+`;
+  if(!weekBookings.length){body+='이번주 D-1 도래 구좌 없음.
+';}
+  else{
+    body+='■ 이번주 D-1 도래 구좌 ('+weekBookings.length+'건)
+'+'─'.repeat(50)+'
+';
+    weekBookings.forEach((b,i)=>{
+      const d1=parseDate(b.penalty_d1);
+      body+=(i+1)+'. '+b.media+' > '+b.product+' > '+b.slot+'
+';
+      body+='   라이브: '+formatDate(b.date)+'  |  D-1 마감: '+fmtFull(d1)+'
+';
+      body+='   ('+ruleLabel(b)+' 위약금 기준)
+
+';
+    });
+  }
+  body+='\n※ 취소 시 반드시 위약금 기준일 전 확인 요망\n확인: https://in-jik.github.io/booking-penalty';
+  const{mon:m2,sun:s2}=getThisWeekRange();
+  const subject='[위약금 알림] '+camName+' 이번주 D-1 도래 구좌 ('+fmt(m2)+'~'+fmt(s2)+')';
+  return{subject,body,camName};
+}
+async function sendWeeklyEmailAuto(force=false){
+  if(!campaignSchedule.ejsPublicKey||!campaignSchedule.ejsServiceId||!campaignSchedule.ejsTemplateId){
+    showToast('EmailJS 설정이 없습니다. 알림 설정에서 구성해 주세요.',true);return false;
+  }
+  if(!campaignRecipients.length){showToast('수신자가 없습니다. 알림 설정에서 추가해 주세요.',true);return false;}
+  if(!force&&!shouldSendToday()){showToast('오늘은 발송 예정일이 아닙니다.',true);return false;}
+  try{
+    await loadData();// 최신 데이터 로드
+    const{subject,body}=await buildEmailContent();
+    emailjs.init(campaignSchedule.ejsPublicKey);
+    const promises=campaignRecipients.map(email=>
+      emailjs.send(campaignSchedule.ejsServiceId,campaignSchedule.ejsTemplateId,
+        {to_email:email,subject,message:body})
+    );
+    await Promise.all(promises);
+    showToast('✅ '+campaignRecipients.length+'명에게 이메일 발송 완료');
+    return true;
+  }catch(err){showToast('❌ 발송 실패: '+(err.text||err.message||err),true);return false;}
+}
+async function testEmailjsSend(){
+  await saveCampaignSettings();
+  await loadCampaignSettings();
+  await sendWeeklyEmailAuto(true);
+}
+/* ═══ URL 파라미터 자동 발송 처리 ═══ */
+async function checkAutoSendParam(){
+  const p=new URLSearchParams(location.search);
+  if(p.get('autosend')==='1'&&currentCampaignCode){
+    await loadCampaignSettings();
+    const ok=await sendWeeklyEmailAuto(false);
+    if(!ok){console.warn('[autosend] 발송 조건 미충족 또는 오류');}
+  }
+}
+
 /* ═══ 백업/복원 ═══ */
 function exportData(){
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
@@ -1030,7 +1225,7 @@ function importData(e){
   const r=new FileReader();
   r.onload=ev=>{
     try{const imp=JSON.parse(ev.target.result);if(!Array.isArray(imp))throw 0;
-      requireAuth(async()=>{data=imp;render();showToast(imp.length+'건 복원 완료');await saveData();});
+      requireAuth(async()=>{migrateItemStatus(imp);data=imp;render();showToast(imp.length+'건 복원 완료');await saveData();});
     }catch{showToast('파일 형식이 올바르지 않습니다.',true);}
   };
   r.readAsText(file);e.target.value='';
@@ -1230,6 +1425,12 @@ async function init(){
   // 각 캠페인의 부킹 데이터도 Firebase에 없으면 자동 업로드
   if(isFirebaseReady()&&campaigns.length>0){
     campaigns.forEach(c=>{dbGet('bookings_'+c.code).catch(()=>{});});
+  }
+  // URL ?code= 파라미터로 자동 입장
+  const _p=new URLSearchParams(location.search);
+  if(_p.get('code')){
+    document.getElementById('landing-code').value=_p.get('code');
+    enterCampaign();
   }
 }
 init();
