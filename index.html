@@ -433,11 +433,13 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
 <!-- 엑셀 업로드 모달 -->
 <div class="modal-overlay" id="bulk-modal">
   <div class="modal" style="width:780px">
-    <h2>📊 엑셀 벌크 업로드</h2>
-    <div class="col-header-hint" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-      <div>📌 컬럼 순서: <strong>A. 매체 | B. 상품 | C. 구좌 | D. 일자 | E. 시간 | F. 타겟팅 | G. 위약금일수 | H. 기준 | I. 진행상태</strong> (1행 헤더 자동 제외)<br>
-      <span style="color:#d46b08">G·H·I 컬럼은 선택사항.</span> H: <strong>영업일</strong> 또는 <strong>달력일</strong> | I: <strong>미정</strong> / <strong>확정</strong> / <strong>취소</strong></div>
-      <button class="btn btn-ghost btn-sm" style="white-space:nowrap;flex-shrink:0" onclick="downloadBulkTemplate()">⬇ 양식 다운로드</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <h2 style="margin:0">📊 엑셀 벌크 업로드</h2>
+      <button class="btn btn-primary btn-sm" onclick="downloadBulkTemplate()" style="flex-shrink:0">⬇ 양식 다운로드</button>
+    </div>
+    <div class="col-header-hint">
+      📌 컬럼 순서: <strong>A. 매체 | B. 상품 | C. 구좌 | D. 일자 | E. 시간 | F. 타겟팅 | G. 위약금일수 | H. 기준 | I. 진행상태</strong> (1행 헤더 자동 제외)<br>
+      <span style="color:#d46b08">G·H·I 컬럼은 선택사항.</span> H: <strong>영업일</strong> 또는 <strong>달력일</strong> | I: <strong>미정</strong> / <strong>확정</strong> / <strong>취소</strong>
     </div>
     <div class="drop-zone" id="drop-zone"
       ondragover="event.preventDefault();this.classList.add('drag-over')"
