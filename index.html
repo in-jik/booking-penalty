@@ -849,7 +849,7 @@ function isThisWeekD1(b){
 function itemStatusSelect(b){
   const cur=b.item_status||'pending';
   const opts=[['pending','⚪ 미정'],['confirmed','🟢 확정'],['cancelled','🔴 취소']];
-  return '<select class="status-select status-'+cur+'" onchange="handleStatusChange(''+b.id+'',this)">'
+  return '<select class="status-select status-'+cur+'" data-id="'+b.id+'" onchange="handleStatusChange(this.dataset.id,this)">'
     +opts.map(([v,l])=>'<option value="'+v+'"'+(v===cur?' selected':'')+'>'+l+'</option>').join('')
     +'</select>';
 }
@@ -1151,35 +1151,24 @@ async function buildEmailContent(){
   const weekLabel=fmt(mon)+'~'+fmt(sun);
   const weekBookings=data.filter(b=>isThisWeekD1(b)&&(b.item_status||'pending')!=='cancelled');
   const W=['일','월','화','수','목','금','토'];
-  const fmtFull=d=>{if(!d)return'-';return d.getFullYear()+'.'+(d.getMonth()+1)+'.'+d.getDate()+'('+W[d.getDay()]+')';}; 
+  const fmtFull=d=>{if(!d)return'-';return d.getFullYear()+'.'+(d.getMonth()+1)+'.'+d.getDate()+'('+W[d.getDay()]+')';};
   const camName=document.getElementById('campaign-title').textContent.replace('📋 ','').replace(' - 위약금 데드라인','');
-  let body=`[광고 부킹 위약금 알림]
-캠페인: ${camName}
-기간: 이번주 D-1 도래 구좌 (${weekLabel})
-
-`;
-  if(!weekBookings.length){body+='이번주 D-1 도래 구좌 없음.
-';}
+  let body='[광고 부킹 위약금 알림]\n캐메인: '+camName+'\n기간: 이번주 D-1 도래 구좌 ('+weekLabel+')\n\n';
+  if(!weekBookings.length){body+='이번주 D-1 도래 구좌 없음.\n';}
   else{
-    body+='■ 이번주 D-1 도래 구좌 ('+weekBookings.length+'건)
-'+'─'.repeat(50)+'
-';
+    body+='■ 이번주 D-1 도래 구좌 ('+weekBookings.length+'건)\n'+'─'.repeat(40)+'\n';
     weekBookings.forEach((b,i)=>{
       const d1=parseDate(b.penalty_d1);
-      body+=(i+1)+'. '+b.media+' > '+b.product+' > '+b.slot+'
-';
-      body+='   라이브: '+formatDate(b.date)+'  |  D-1 마감: '+fmtFull(d1)+'
-';
-      body+='   ('+ruleLabel(b)+' 위약금 기준)
-
-';
+      body+=(i+1)+'. '+b.media+' > '+b.product+' > '+b.slot+'\n';
+      body+='   라이브: '+formatDate(b.date)+'  |  D-1 마감: '+fmtFull(d1)+'\n';
+      body+='   ('+ruleLabel(b)+' 위약금 기준)\n\n';
     });
   }
   body+='\n※ 취소 시 반드시 위약금 기준일 전 확인 요망\n확인: https://in-jik.github.io/booking-penalty';
-  const{mon:m2,sun:s2}=getThisWeekRange();
-  const subject='[위약금 알림] '+camName+' 이번주 D-1 도래 구좌 ('+fmt(m2)+'~'+fmt(s2)+')';
+  const subject='[위약금 알림] '+camName+' 이번주 D-1 도래 구좌 ('+fmt(mon)+'~'+fmt(sun)+')';
   return{subject,body,camName};
 }
+
 async function sendWeeklyEmailAuto(force=false){
   if(!campaignSchedule.ejsPublicKey||!campaignSchedule.ejsServiceId||!campaignSchedule.ejsTemplateId){
     showToast('EmailJS 설정이 없습니다. 알림 설정에서 구성해 주세요.',true);return false;
