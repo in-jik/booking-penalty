@@ -434,9 +434,10 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
 <div class="modal-overlay" id="bulk-modal">
   <div class="modal" style="width:780px">
     <h2>📊 엑셀 벌크 업로드</h2>
-    <div class="col-header-hint">
-      📌 컬럼 순서: <strong>A. 매체 | B. 상품 | C. 구좌(형태) | D. 일자 | E. 시간 | F. 타겟팅 | G. 위약금일수 | H. 기준</strong> (1행 헤더 자동 제외)<br>
-      <span style="color:#d46b08">G·H 컬럼은 선택사항입니다.</span> 비워두면 아래 기본값 적용. H컬럼: <strong>영업일</strong> 또는 <strong>달력일</strong> 입력
+    <div class="col-header-hint" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+      <div>📌 컬럼 순서: <strong>A. 매체 | B. 상품 | C. 구좌 | D. 일자 | E. 시간 | F. 타겟팅 | G. 위약금일수 | H. 기준 | I. 진행상태</strong> (1행 헤더 자동 제외)<br>
+      <span style="color:#d46b08">G·H·I 컬럼은 선택사항.</span> H: <strong>영업일</strong> 또는 <strong>달력일</strong> | I: <strong>미정</strong> / <strong>확정</strong> / <strong>취소</strong></div>
+      <button class="btn btn-ghost btn-sm" style="white-space:nowrap;flex-shrink:0" onclick="downloadBulkTemplate()">⬇ 양식 다운로드</button>
     </div>
     <div class="drop-zone" id="drop-zone"
       ondragover="event.preventDefault();this.classList.add('drag-over')"
@@ -461,7 +462,7 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
     </div>
     <div id="bulk-preview-area" style="display:none">
       <div class="preview-wrap"><table>
-        <thead><tr><th>#</th><th>매체</th><th>상품</th><th>구좌</th><th>일자</th><th>시간</th><th>타겟팅</th><th>위약금 기준</th><th>D-day</th><th>D-1</th><th>비고</th></tr></thead>
+        <thead><tr><th>#</th><th>매체</th><th>상품</th><th>구좌</th><th>일자</th><th>시간</th><th>타겟팅</th><th>위약금 기준</th><th>D-day</th><th>D-1</th><th>진행상태</th><th>비고</th></tr></thead>
         <tbody id="bulk-tbody"></tbody>
       </table></div>
       <div class="preview-count" id="bulk-count"></div>
@@ -1245,7 +1246,8 @@ function processFile(file){
         return {
           media:String(r[0]||'').trim(),product:String(r[1]||'').trim(),slot:String(r[2]||'').trim(),
           date:xlsxToStr(r[3]),time:String(r[4]||'').trim(),targeting:String(r[5]||'').trim(),
-          rowDays, rowType  // null이면 기본값 사용
+          rowDays, rowType,
+          item_status:(()=>{const s=String(r[8]||'').trim();return s==='확정'?'confirmed':s==='취소'?'cancelled':'pending';})()  // I컬럼
         };
       });
       refreshBulkPreview();
@@ -1270,6 +1272,7 @@ function refreshBulkPreview(){
       +'<td style="max-width:80px;overflow:hidden;text-overflow:ellipsis">'+esc(r.targeting||'-')+'</td>'
       +'<td><span style="font-size:11px;font-weight:600;color:'+(isCustom?'#4f6ef7':'#8c8c8c')+'">'+ruleLabel+(isCustom?' ✓':'')+'</span></td>'
       +'<td class="calc-cell">'+(dd?formatDate(toYMD(dd)):'-')+'</td><td class="calc-cell">'+(d1?formatDate(toYMD(d1)):'-')+'</td>'
+      +'<td><span style="font-size:11px;font-weight:600;color:'+(r.item_status==='confirmed'?'#389e0d':r.item_status==='cancelled'?'#cf1322':'#595959')+'">'+{pending:'⚪ 미정',confirmed:'🟢 확정',cancelled:'🔴 취소'}[r.item_status||'pending']+'</span></td>'
       +'<td>'+(warn?'<span class="warn-cell">⚠ '+warn+'</span>':'')+'</td></tr>';
   }).join('');
   const valid=bulkRows.filter(r=>r.media&&r.product&&r.slot).length;
@@ -1284,9 +1287,36 @@ async function importBulk(){
   bulkRows.filter(r=>r.media&&r.product&&r.slot).forEach(r=>{
     const pD=r.rowDays!==null?r.rowDays:defD;
     const pT=r.rowType!==null?r.rowType:defT;
-    data.push(makeBooking({...r,penalty_days:pD,penalty_type:pT}));
+    data.push(makeBooking({...r,penalty_days:pD,penalty_type:pT,item_status:r.item_status||'pending'}));
   });
   render();closeModal('bulk-modal');bulkRows=[];showToast('업로드 완료');await saveData();
+}
+
+/* ═══ 엑셀 양식 다운로드 ═══ */
+function downloadBulkTemplate(){
+  const statusLabel={pending:'미정',confirmed:'확정',cancelled:'취소'};
+  const header=['매체','상품','구좌','일자','시간','타겟팅','위약금일수','기준','진행상태'];
+  const rows=[header];
+  if(data&&data.length){
+    data.forEach(b=>{
+      rows.push([
+        b.media||'',b.product||'',b.slot||'',
+        b.date||'',b.time||'',b.targeting||'',
+        b.penalty_days||10,
+        b.penalty_type==='calendar'?'달력일':'영업일',
+        statusLabel[b.item_status||'pending']||'미정'
+      ]);
+    });
+  }else{
+    rows.push(['네이버','스페셜DA','상단고정','2025-03-01','09:00~18:00','25-34세 여성',10,'영업일','미정']);
+  }
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  // 컬럼 너비 설정
+  ws['!cols']=[{wch:12},{wch:14},{wch:16},{wch:12},{wch:14},{wch:16},{wch:10},{wch:10},{wch:8}];
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'부킹리스트');
+  const fn=(currentCampaignCode||'template')+'-부킹양식-'+new Date().toISOString().slice(0,10)+'.xlsx';
+  XLSX.writeFile(wb,fn);
+  showToast('양식 다운로드 완료');
 }
 
 /* ═══ 가이드 ═══ */
