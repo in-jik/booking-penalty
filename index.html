@@ -355,7 +355,7 @@ td { padding:11px 14px; white-space:nowrap; vertical-align:middle; }
 </div>
 
 <!-- 비밀번호 모달 -->
-<div class="modal-overlay" id="pw-modal">
+<div class="modal-overlay" id="pw-modal" style="z-index:1200">
   <div class="modal">
     <div class="icon">🔒</div><h2>관리자 인증</h2><p>관리자 코드를 입력하세요</p>
     <input type="password" id="pw-input" placeholder="코드 입력" onkeydown="if(event.key==='Enter')checkPw()">
